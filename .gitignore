@@ -1,0 +1,16 @@
+# Environment variables (NEVER commit secrets)
+.env
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# ChromaDB local storage
+chroma_db/
+
+# macOS
+.DS_Store
+
+# Streamlit
+.streamlit/secrets.toml
