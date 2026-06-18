@@ -14,3 +14,10 @@ chroma_db/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Generated output files
+outputs/
+
+# Temporary generated files
+temp_outputs/
+outputs/
