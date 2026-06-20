@@ -34,6 +34,7 @@ TOP_K_RESULTS = 3
 MAX_SEARCH_CALLS = 3          # hard cap on web searches per research run
 MAX_REQUESTS_PER_SESSION = 10 # prevents runaway usage on deployed instance
 MAX_FILE_SIZE_MB = 10         # cap on uploaded PDF size
+MAX_REWRITE_ATTEMPTS = 2   # user-triggered regenerations per brief, after initial write
 
 # ── Deployment ────────────────────────────────────────────
 # Files are generated temporarily and served as downloads — not stored on server
