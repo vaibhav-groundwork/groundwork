@@ -1,0 +1,46 @@
+# Groundwork — v2 Feature Backlog
+
+A running list of ideas discussed during v1 build, deliberately deferred for later.
+
+---
+
+## 1. Specialist / persona agents (post-synthesis enrichment)
+- Strategic Consultant, Marketing Expert, Financial Analyst / Risk Assessor lenses
+- Triggered on-demand by the user after the core brief is generated, NOT a mandatory pipeline step
+- Must be genuinely specialized, not just "Claude Sonnet + a persona system prompt" —
+  needs real differentiation via: domain-specific RAG knowledge base, domain-specific tools,
+  domain-specific eval criteria, and possibly a different/fine-tuned model where justified
+- Decide architecture + UX once v1 has shipped and has real user feedback
+
+## 2. Multi-user authentication & persistent user IDs
+- v1 has no login — session memory + run history only, via ChromaDB, no user_id filtering
+- v2 upgrade path is a one-line change: add `user_id` to the existing ChromaDB `where` filter
+- Requires real auth (OAuth/JWT/session management) — deliberately out of scope for v1
+
+## 3. Persistent memory beyond a single deployment
+- Streamlit Community Cloud free tier does not persist ChromaDB across redeploys
+- v2: migrate to Pinecone (or Supabase) for true persistent memory across redeploys
+- v2: migrate hosting to Railway for more control as usage grows
+
+## 4. Provider-aware prompt caching in `call_llm()`
+- Current `cache_system_prompt` flag always emits Anthropic's `cache_control` block
+- OpenAI auto-caches >1024 token prompts with no explicit block — different mechanism entirely
+- v2: branch caching logic based on which provider/model is being called
+
+## 5. LLM call retry logic
+- `call_llm()` currently has no retry/backoff if a call times out or fails transiently
+- v2: add retry with backoff, decide which error types are retryable, likely at the
+  `call_llm()` level so every agent benefits without individual changes
+
+## 6. Judge agent as a true second opinion (cross-provider)
+- v1: judge uses Haiku (same provider as the writer — known self-grading bias risk, documented)
+- v2: route judge through GPT-4o-mini via LiteLLM for genuine cross-model evaluation
+
+## 7. Closed-loop automatic rewrite (Pattern A, reconsidered)
+- v1 ships human-in-the-loop: user sees judge feedback, clicks "Regenerate" (capped retries)
+- v2 (maybe): explore a fully automatic judge→rewrite loop for specific use cases,
+  with safeguards against the self-enhancement bias / infinite loop risks already discussed
+
+---
+
+*Add new ideas to this file as they come up during the v1 build — review when v1 ships.*
