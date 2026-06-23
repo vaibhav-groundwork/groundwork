@@ -41,6 +41,13 @@ A running list of ideas discussed during v1 build, deliberately deferred for lat
 - v2 (maybe): explore a fully automatic judge→rewrite loop for specific use cases,
   with safeguards against the self-enhancement bias / infinite loop risks already discussed
 
+## 8. ChromaDB session collection cleanup
+- v1 fix: each browser session gets its own isolated ChromaDB collection via
+  session_id (st.session_state), preventing cross-user data bleed — this IS in v1
+- v2 gap: nothing currently deletes old/abandoned session collections — every
+  session ever created leaves a permanent collection on the server (slow storage leak)
+- v2: scheduled cleanup job (e.g. delete collections older than N hours), or
+  manual admin cleanup endpoint
 ---
 
 *Add new ideas to this file as they come up during the v1 build — review when v1 ships.*
