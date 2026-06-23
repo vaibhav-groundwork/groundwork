@@ -48,6 +48,15 @@ A running list of ideas discussed during v1 build, deliberately deferred for lat
   session ever created leaves a permanent collection on the server (slow storage leak)
 - v2: scheduled cleanup job (e.g. delete collections older than N hours), or
   manual admin cleanup endpoint
----
+
+## 9. Structured "found answer" signal in rag_node
+- v1 fix: keyword-matching heuristic (declined_phrases list) distinguishes
+  "Claude gave a real answer" from "Claude honestly declined" for the
+  status_message shown to the user — works for common phrasing but not
+  a structural guarantee
+- v2: have Claude return structured output (e.g. a found_answer: bool field
+  alongside the prose answer) so this distinction is guaranteed correct
+  rather than inferred from string matching — same structured-output pattern
+  already used in analyse_node's needs_more_search decision
 
 *Add new ideas to this file as they come up during the v1 build — review when v1 ships.*
