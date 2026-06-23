@@ -31,6 +31,8 @@ def call_llm(
     system: str = None,
     max_tokens: int = 2048,
     cache_system_prompt: bool = False,
+    tools: list = None,
+    tool_choice: dict = None,
 ):
     """
     Single entry point for every LLM call in Groundwork — Claude, GPT, or
@@ -38,13 +40,20 @@ def call_llm(
 
     Every agent imports this function instead of calling Anthropic() or
     OpenAI() directly. This guarantees:
-      - one consistent tracing path regardless of which model is used
-      - one place to add caching, retries, or fallbacks later
-      - swapping models is a one-line change at the call site, not a rewrite
+    - one consistent tracing path regardless of which model is used
+    - one place to add caching, retries, or fallbacks later
+    - swapping models is a one-line change at the call site, not a rewrite
 
     cache_system_prompt: marks the system prompt as cacheable (Anthropic
     prompt caching) — worth enabling for agents that run multiple sequential
     calls with the same system prompt, like the research loop.
+
+    tools / tool_choice: optional structured-output mode. When tools is
+    provided, the model is constrained to return arguments matching the
+    given schema rather than free-form text — used by judge_agent.py for
+    reliable, guaranteed-shape scoring output (Level 3 structured output,
+    vs the prompt-based JSON approach used elsewhere in this codebase).
+    LiteLLM passes these through uniformly regardless of provider.
     """
     from litellm import completion
 
@@ -58,8 +67,7 @@ def call_llm(
         if cache_system_prompt:
             # NOTE: this cache_control block is Anthropic-specific syntax.
             # OpenAI auto-caches prompts >1024 tokens with no explicit block needed.
-            # When judge_agent.py calls a non-Anthropic model, branch here based
-            # on provider rather than always emitting Anthropic's cache format.
+            # Branch here based on provider when a non-Anthropic model needs caching.
             kwargs["messages"] = [
                 {
                     "role": "system",
@@ -74,6 +82,11 @@ def call_llm(
             ] + messages
         else:
             kwargs["messages"] = [{"role": "system", "content": system}] + messages
+
+    if tools:
+        kwargs["tools"] = tools
+    if tool_choice:
+        kwargs["tool_choice"] = tool_choice
 
     response = completion(**kwargs)
     return response
