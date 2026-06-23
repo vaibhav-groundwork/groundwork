@@ -15,13 +15,22 @@ from src.config import (
 )
 
 
-def get_chroma_collection(collection_name: str = "groundwork_documents"):
+def get_chroma_collection(session_id: str):
     """
-    Returns a persistent ChromaDB collection using a local embedding model.
-    Same pattern used throughout the course — free, runs locally, no API call.
+    Returns a persistent ChromaDB collection scoped to a single browser session.
+
+    Each session gets its own isolated collection (named groundwork_{session_id})
+    so that documents uploaded by one user can never be retrieved when answering
+    another user's question. session_id is generated once per browser session
+    in app.py via st.session_state and passed down to every call site.
+
+    Known v1 limitation (tracked in docs/groundwork_v2_backlog.md): nothing
+    currently deletes old session collections — they persist on disk until
+    manually cleaned up.
     """
     embedding_fn = SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL)
     client = chromadb.PersistentClient(path=CHROMA_DIR)
+    collection_name = f"groundwork_{session_id}"
     return client.get_or_create_collection(
         name=collection_name,
         embedding_function=embedding_fn,
