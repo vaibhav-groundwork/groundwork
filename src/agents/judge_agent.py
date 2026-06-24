@@ -12,7 +12,7 @@ Pipeline position:
 Cross-provider judging design:
   The writer (synthesis_node) uses Claude Sonnet; the judge uses JUDGE_MODEL
   (gpt-4o-mini via LiteLLM). Using a different provider avoids self-grading
-  bias...— a model scoring its own outputs has a measurable tendency to inflate ratings.
+  bias — a model scoring its own outputs has a measurable tendency to inflate ratings.
   Swapping the judge to a different provider is a one-line change in config.py; 
   this file is provider-agnostic.
 
