@@ -3,6 +3,7 @@ from src.config import (
     LANGCHAIN_TRACING,
     LANGCHAIN_PROJECT,
     ANTHROPIC_API_KEY,
+    OPENAI_API_KEY,
 )
 
 
@@ -15,7 +16,7 @@ def setup_tracing() -> None:
     os.environ["LANGCHAIN_TRACING_V2"] = LANGCHAIN_TRACING
     os.environ["LANGCHAIN_PROJECT"] = LANGCHAIN_PROJECT
     os.environ["ANTHROPIC_API_KEY"] = ANTHROPIC_API_KEY or ""
-
+    os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY or ""
     if LANGCHAIN_TRACING == "true":
         import litellm
         litellm.success_callback = ["langsmith"]

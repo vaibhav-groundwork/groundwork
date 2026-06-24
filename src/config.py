@@ -8,14 +8,15 @@ load_dotenv()
 # ── API Keys ──────────────────────────────────────────────
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 SERPAPI_KEY = os.getenv("SERPAPI_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # ── Models ────────────────────────────────────────────────
 # Haiku  → fast, cheap: classification, routing, gap detection
 # Sonnet → balanced: main synthesis, writing, analysis
-# Judge  → deliberately separate to avoid self-grading bias (swap to GPT-4o-mini via LiteLLM in v2)
+# Judge  → deliberately separate to avoid self-grading bias (GPT-4o-mini via LiteLLM)
 HAIKU_MODEL = "claude-haiku-4-5"
 SONNET_MODEL = "claude-sonnet-4-5"
-JUDGE_MODEL = "claude-haiku-4-5"
+JUDGE_MODEL = "gpt-4o-mini"  # deliberately cross-provider (not Claude) to avoid self-grading bias
 
 # ── Token limits ──────────────────────────────────────────
 # max_tokens is a ceiling not a fixed charge — erring higher prevents silent truncation
