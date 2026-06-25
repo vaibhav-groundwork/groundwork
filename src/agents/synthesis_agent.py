@@ -24,6 +24,23 @@ Always-structured design:
   has already been made. This avoids the inherent unreliability of having an LLM
   infer structural intent from content alone.
 
+Revision mode (regeneration with targeted feedback):
+  When previous_report is non-empty, this node switches from fresh generation
+  into revision mode. The judge agent's specific feedback on the single
+  weakest-scoring dimension (identified by app.py, not this file — see the
+  same upstream-decision boundary used elsewhere) is fed back explicitly,
+  along with an instruction to substantively address that specific issue
+  rather than make superficial wording changes — directly countering the
+  documented tendency of LLMs to under-revise when shown their own prior
+  output. Everything already accurate and well-grounded is explicitly
+  preserved rather than regenerated from scratch, since starting over risks
+  losing what already worked while only fixing one narrow issue.
+  A separate changes_summary is also extracted (split on a "---CHANGES---"
+  delimiter in the raw response) so app.py can show the user a short,
+  human-readable explanation of what was improved — kept distinct from
+  the report itself rather than embedded inline, the same separation
+  principle used for sources_section.
+
 Sources separation:
   Inline citations are explicitly prohibited in the brief body. Sources are
   assembled independently as a formatted string (sources_section) from the
@@ -64,7 +81,11 @@ class SynthesisState(TypedDict):
                                 # or multi-turn accumulation — assembled upstream
     source_list: list[dict]     # structured sources extracted upstream, each
                                 # containing filename/URL info for citation display
+    previous_report: str              # NEW: empty string on first attempt
+    weakest_dimension: str            # NEW: e.g. "conciseness", empty on first attempt
+    weakest_dimension_feedback: str   # NEW: the specific reasoning text, empty on first attempt
     brief: str
+    changes_summary: str        # NEW: populated only on revision runs, explains what changed
     sources_section: str
     status_message: str
 
@@ -81,8 +102,9 @@ def synthesis_node(state: SynthesisState) -> dict:
     - source_material is truncated to _SOURCE_MATERIAL_CHAR_LIMIT if needed,
       with a WARNING logged so unexpected truncation is visible in dev.
 
-    - Claude chooses structure based on scope: narrow material → concise prose;
-      broad/multi-theme material → titled sections with executive summary.
+    - Always produces full document structure; the decision of whether the user
+      wants a quick answer vs. a structured report was already made via the CTA, 
+      before this node runs.
 
     - Inline citations are explicitly prohibited in the brief body; sources are
       formatted separately from source_list as a plain string, with no LLM call.
@@ -98,6 +120,34 @@ def synthesis_node(state: SynthesisState) -> dict:
     topic: str = state["topic"]
     source_material: str = state.get("source_material", "")
     source_list: list[dict] = state.get("source_list", [])
+    previous_report: str = state.get("previous_report", "")
+    weakest_dimension: str = state.get("weakest_dimension", "")
+    weakest_dimension_feedback: str = state.get("weakest_dimension_feedback", "")
+
+    is_revision = bool(previous_report)
+    if is_revision:
+        revision_instructions = (
+          f"\n\nYou previously wrote the report below. An independent evaluator scored it "
+          f"and found a specific issue with {weakest_dimension}: {weakest_dimension_feedback}\n\n"
+          f"Before rewriting, identify exactly which sections in the previous report "
+          f"restate the same underlying fact as another section. Then produce a revised "
+          f"version with FEWER sections than the original if the issue was conciseness — "
+          f"literally merge the repetitive sections into one, rather than keeping the same "
+          f"section count with reworded headings. The revised report should have a "
+          f"meaningfully different structure from the previous one if structural repetition "
+          f"was the issue, not just different wording in the same structure. "
+          f"Keep everything that was already accurate and well-grounded unchanged in substance, "
+          f"even as you restructure how it's presented.\n\n"
+          f"Do this analysis internally — your response should contain ONLY the revised "
+          f"report itself, starting directly with the title. Do not include any preamble, "
+          f"explanation, or commentary about what you changed before the report.\n\n"
+          f"After writing the revised report, add a separator line containing exactly "
+          f"'---CHANGES---' followed by a brief 2-3 sentence summary, written for the "
+          f"end user, explaining specifically what was changed and why.\n\n"
+          f"PREVIOUS REPORT:\n{previous_report}"
+        )
+    else:
+        revision_instructions = ""
 
     # ── Truncation safeguard ──────────────────────────────────────────────────
     original_length = len(source_material)
@@ -133,9 +183,13 @@ def synthesis_node(state: SynthesisState) -> dict:
         "If the source material is limited, write shorter sections rather than padding with "
         "repetition or invented detail — the structure should still be present, but content "
         "should remain accurate and proportionate to what the source material actually supports.\n\n"
+        "Each section must contain genuinely distinct information — do not restate the same "
+        "fact or figure across multiple sections using different wording. If two potential "
+        "sections would largely repeat each other, merge them into one section instead.\n\n"
         "Do NOT include inline citations, footnote markers, or source references of any kind "
         "within the body text. Sources will be presented in a separate section by the application. "
         "Write in clear, professional prose appropriate for a business audience."
+        + revision_instructions
 )
 
     user_message = (
@@ -164,18 +218,32 @@ def synthesis_node(state: SynthesisState) -> dict:
             "brief": (
                 "Something went wrong generating your brief — please try again."
             ),
+            "changes_summary": "",
             "sources_section": "",
             "status_message": "⚠️ Error generating brief — please try again.",
         }
 
     brief: str = response.choices[0].message.content.strip()
-    logger.info("synthesis_node: brief generated, length=%d characters.", len(brief))
+
+    if "---CHANGES---" in brief:
+        brief, _, changes_summary = brief.partition("---CHANGES---")
+        brief = brief.strip()
+        changes_summary = changes_summary.strip()
+    else:
+        changes_summary = ""
+
+    logger.info(
+        "synthesis_node: brief generated, length=%d characters. changes_summary present=%s",
+        len(brief),
+        bool(changes_summary),
+    )
 
     # ── Sources section (pure string formatting — no LLM call) ────────────────
     sources_section = _format_sources(source_list)
 
     return {
         "brief": brief,
+        "changes_summary": changes_summary,
         "sources_section": sources_section,
         "status_message": "✅ Brief ready.",
     }
