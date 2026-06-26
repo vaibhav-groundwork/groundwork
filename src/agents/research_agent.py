@@ -13,7 +13,6 @@ Exports:
 
 import json
 import logging
-import re
 from typing import TypedDict
 
 import requests
@@ -27,6 +26,36 @@ from src.config import (
 from src.tracing import call_llm
 
 logger = logging.getLogger(__name__)
+
+import json
+
+# Tool schema for the gap-analysis decision (analyse_node's intermediate passes).
+# Replaces prompt-based JSON parsing — see judge_agent.py for the same pattern.
+# Fixes a bug: Claude occasionally appends explanatory prose after
+# the JSON block (e.g. "**Rationale:** ..."), which broke regex-based fence
+# stripping and silently fell back to needs_more_search=False, terminating the
+# loop early even when Claude's actual intent was to continue searching.
+_GAP_ANALYSIS_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "report_gap_analysis",
+        "description": "Report whether another search is needed and what to search for.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "needs_more_search": {
+                    "type": "boolean",
+                    "description": "True if another search would meaningfully improve coverage.",
+                },
+                "next_query": {
+                    "type": "string",
+                    "description": "A specific refined search query. Empty string if no more search is needed.",
+                },
+            },
+            "required": ["needs_more_search", "next_query"],
+        },
+    },
+}
 
 
 # ── State schema ──────────────────────────────────────────────────────────────
@@ -181,8 +210,7 @@ def analyse_node(state: ResearchState) -> dict:
         "You are a research analyst reviewing web search results. "
         "Your job is to identify gaps in the information gathered so far and decide "
         "whether one additional targeted search would meaningfully improve coverage. "
-        "Respond in strict JSON only — no prose, no markdown fences:\n"
-        '{"needs_more_search": <bool>, "next_query": "<specific refined query, or empty string>"}'
+        "Call the report_gap_analysis tool with your decision."
     )
     gap_messages = [
         {
@@ -197,16 +225,29 @@ def analyse_node(state: ResearchState) -> dict:
         }
     ]
 
-    response = call_llm(
-        model=HAIKU_MODEL,
-        messages=gap_messages,
-        system=gap_system,
-        max_tokens=MAX_TOKENS_HAIKU,
-        cache_system_prompt=True,
-    )
-    raw_text = response.choices[0].message.content.strip()
+    try:
+        response = call_llm(
+            model=HAIKU_MODEL,
+            messages=gap_messages,
+            system=gap_system,
+            max_tokens=MAX_TOKENS_HAIKU,
+            cache_system_prompt=True,
+            tools=[_GAP_ANALYSIS_TOOL],
+            tool_choice={"type": "function", "function": {"name": "report_gap_analysis"}},
+        )
+        tool_calls = response.choices[0].message.tool_calls
+        if not tool_calls:
+            raise ValueError("call_llm returned no tool_calls for report_gap_analysis.")
+        decision = json.loads(tool_calls[0].function.arguments)
+    except Exception as exc:
+        logger.warning(
+            "analyse_node: gap-analysis tool call failed — %s: %s. "
+            "Defaulting to needs_more_search=False to avoid an unbounded loop.",
+            type(exc).__name__,
+            exc,
+        )
+        decision = {"needs_more_search": False, "next_query": ""}
 
-    decision = _parse_json_response(raw_text)
     needs_more = bool(decision.get("needs_more_search", False))
     next_query = decision.get("next_query", "") or ""
 
@@ -248,24 +289,6 @@ def _format_snippets(search_results: list[dict]) -> str:
             f"    Source: {r.get('link', 'unknown')}"
         )
     return "\n\n".join(lines)
-
-
-def _parse_json_response(text: str) -> dict:
-    """
-    Parses a JSON response from Claude, tolerating markdown code fences.
-    Falls back to safe defaults on any parse error.
-    """
-    cleaned = re.sub(r"^```(?:json)?\s*", "", text, flags=re.MULTILINE)
-    cleaned = re.sub(r"\s*```$", "", cleaned, flags=re.MULTILINE).strip()
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError:
-        logger.warning(
-            "analyse_node: failed to parse JSON from model response — "
-            "raw text: %r",
-            text[:200],
-        )
-        return {"needs_more_search": False, "next_query": ""}
 
 
 def _synthesise_notes(state: ResearchState) -> str:
