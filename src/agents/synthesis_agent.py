@@ -60,6 +60,7 @@ Exports:
 """
 
 import logging
+from src.utils import strip_em_dashes
 from typing import TypedDict
 
 from src.config import MAX_TOKENS_SONNET, SONNET_MODEL
@@ -144,6 +145,7 @@ def synthesis_node(state: SynthesisState) -> dict:
           f"After writing the revised report, add a separator line containing exactly "
           f"'---CHANGES---' followed by a brief 2-3 sentence summary, written for the "
           f"end user, explaining specifically what was changed and why.\n\n"
+          f"Do not use em dashes (—) anywhere in your response. Use commas, periods, or parentheses instead.\n\n"
           f"PREVIOUS REPORT:\n{previous_report}"
         )
     else:
@@ -189,6 +191,7 @@ def synthesis_node(state: SynthesisState) -> dict:
         "Do NOT include inline citations, footnote markers, or source references of any kind "
         "within the body text. Sources will be presented in a separate section by the application. "
         "Write in clear, professional prose appropriate for a business audience."
+        "Do not use em dashes (—) anywhere in your response. Use commas, periods, or parentheses instead.\n\n"
         + revision_instructions
 )
 
@@ -242,8 +245,8 @@ def synthesis_node(state: SynthesisState) -> dict:
     sources_section = _format_sources(source_list)
 
     return {
-        "brief": brief,
-        "changes_summary": changes_summary,
+        "brief": strip_em_dashes(brief),
+        "changes_summary": strip_em_dashes(changes_summary),
         "sources_section": sources_section,
         "status_message": "✅ Brief ready.",
     }

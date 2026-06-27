@@ -13,6 +13,7 @@ Exports:
 
 import json
 import logging
+from src.utils import strip_em_dashes
 from typing import TypedDict
 
 import requests
@@ -180,7 +181,7 @@ def analyse_node(state: ResearchState) -> dict:
         return {
             "needs_more_search": False,
             "next_query": "",
-            "research_notes": (
+            "research_notes": strip_em_dashes(
                 "No information was found for this topic across all search attempts. "
                 "The brief will be limited — please verify the topic or try a more "
                 "specific query."
@@ -211,6 +212,7 @@ def analyse_node(state: ResearchState) -> dict:
         "Your job is to identify gaps in the information gathered so far and decide "
         "whether one additional targeted search would meaningfully improve coverage. "
         "Call the report_gap_analysis tool with your decision."
+        "Do not use em dashes (—) anywhere in your response. Use commas, periods, or parentheses instead.\n\n"
     )
     gap_messages = [
         {
@@ -305,6 +307,7 @@ def _synthesise_notes(state: ResearchState) -> str:
         "Group findings by theme. Include specific facts and cite sources by their URL. "
         "Write for a downstream writer agent — this is the input they will work from, "
         "not a final deliverable. Be thorough and factual; do not pad or summarise vaguely."
+        "Do not use em dashes (—) anywhere in your response. Use commas, periods, or parentheses instead.\n\n"
     )
     synth_messages = [
         {
@@ -330,4 +333,4 @@ def _synthesise_notes(state: ResearchState) -> str:
         max_tokens=MAX_TOKENS_HAIKU,
         cache_system_prompt=True,
     )
-    return response.choices[0].message.content.strip()
+    return strip_em_dashes(response.choices[0].message.content.strip())

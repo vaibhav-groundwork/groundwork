@@ -19,6 +19,7 @@ Exports:
 """
 
 import logging
+from src.utils import strip_em_dashes
 from typing import TypedDict
 
 from src.config import MAX_TOKENS_SONNET, SONNET_MODEL
@@ -119,6 +120,7 @@ def rag_node(state: RAGState) -> dict:
         "mention specifically what the document *does* cover based on the excerpts, so "
         "the user understands the scope of available content.\n\n"
         "Always cite the source filename when referencing information from a specific excerpt."
+        "Do not use em dashes (—) anywhere in your response. Use commas, periods, or parentheses instead.\n\n"
     )
 
     user_message = (
@@ -183,7 +185,7 @@ def rag_node(state: RAGState) -> dict:
     )
 
     return {
-        "answer": answer,
+        "answer": strip_em_dashes(answer),
         "sources": sources,
         "status_message": status_message,
     }

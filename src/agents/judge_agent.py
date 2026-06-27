@@ -51,6 +51,7 @@ Exports:
 import json
 import logging
 from typing import TypedDict
+from src.utils import strip_em_dashes
 
 from src.config import JUDGE_MODEL
 from src.tracing import call_llm
@@ -202,6 +203,7 @@ def judge_node(state: JudgeState) -> dict:
         "report for omitting information that was never in the source. "
         "You must call the score_report tool with your scores and reasoning. "
         "Do not respond with plain text."
+        "Do not use em dashes (—) anywhere in your response. Use commas, periods, or parentheses instead.\n\n"
     )
     user_message = (
         f"Topic: {topic}\n\n"
@@ -268,7 +270,7 @@ def judge_node(state: JudgeState) -> dict:
     logger.info("judge_node: overall_score=%.1f", overall_score)
 
     # ── Score explanation (plain language, suitable for direct UI display) ────
-    score_explanation = (
+    score_explanation = strip_em_dashes(
         f"Overall score: {overall_score}/5.0. "
         f"Accuracy ({accuracy}/5) and groundedness ({groundedness}/5) are weighted "
         f"more heavily (30% each) because factual consistency and traceability to "
@@ -281,19 +283,19 @@ def judge_node(state: JudgeState) -> dict:
     scores = {
         "accuracy": {
             "score": accuracy,
-            "reasoning": args.get("accuracy_reasoning", ""),
+            "reasoning": strip_em_dashes(args.get("accuracy_reasoning", "")),
         },
         "groundedness": {
             "score": groundedness,
-            "reasoning": args.get("groundedness_reasoning", ""),
+            "reasoning": strip_em_dashes(args.get("groundedness_reasoning", "")),
         },
         "helpfulness": {
             "score": helpfulness,
-            "reasoning": args.get("helpfulness_reasoning", ""),
+            "reasoning": strip_em_dashes(args.get("helpfulness_reasoning", "")),
         },
         "conciseness": {
             "score": conciseness,
-            "reasoning": args.get("conciseness_reasoning", ""),
+            "reasoning": strip_em_dashes(args.get("conciseness_reasoning", "")),
         },
     }
 
