@@ -52,6 +52,7 @@ import os
 import subprocess
 
 from src.config import get_output_dir
+from src.utils import _escape_for_js_string
 
 logger = logging.getLogger(__name__)
 
@@ -86,28 +87,6 @@ def _parse_markdown_structure(brief: str) -> list[dict]:
         else:
             elements.append({"type": "paragraph", "text": stripped})
     return elements
-
-
-# ── JS string escaper ─────────────────────────────────────────────────────────
-
-def _escape_for_js_string(text: str) -> str:
-    """
-    Escapes a string for safe embedding inside a JavaScript template literal.
-
-    Order is critical:
-      1. Backslashes first — if any later escape sequence introduces a backslash
-         it would be double-escaped if backslashes were processed afterwards.
-      2. Backticks — would prematurely close the template literal.
-      3. '${' sequences — the template literal interpolation syntax; only the
-         combined two-character sequence is escaped, not bare $ or { alone.
-      4. Newlines — replaced with the two-character literal \\n so the
-         generated script string stays on one line.
-    """
-    text = text.replace("\\", "\\\\")
-    text = text.replace("`", "\\`")
-    text = text.replace("${", "\\${")
-    text = text.replace("\n", "\\n")
-    return text
 
 
 # ── Main export function ──────────────────────────────────────────────────────
