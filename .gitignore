@@ -20,4 +20,7 @@ outputs/
 
 # Temporary generated files
 temp_outputs/
-outputs/
+
+# Node.js dependencies
+node_modules/
+package-lock.json
