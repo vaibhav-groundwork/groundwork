@@ -49,6 +49,14 @@ def extract_text_from_pdf(file_path: str) -> str:
         text += page.extract_text() + "\n"
     return text
 
+def extract_text_from_docx(file_path: str) -> str:
+    """Extracts all text from a Word (.docx) file, paragraph by paragraph."""
+    from docx import Document
+    doc = Document(file_path)
+    text = ""
+    for para in doc.paragraphs:
+        text += para.text + "\n"
+    return text
 
 def chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
     """
@@ -103,7 +111,11 @@ def ingest_document(file_path: str, collection, display_name: str | None = None)
     if is_document_indexed(collection, doc_hash):
         return {"status": "already_indexed", "chunks_added": 0, "doc_hash": doc_hash}
 
-    text = extract_text_from_pdf(file_path)
+    file_ext = Path(file_path).suffix.lower()
+    if file_ext == ".docx":
+        text = extract_text_from_docx(file_path)
+    else:
+        text = extract_text_from_pdf(file_path)
     chunks = chunk_text(text)
 
     filename = display_name if display_name else Path(file_path).name

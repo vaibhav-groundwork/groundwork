@@ -170,9 +170,10 @@ elif st.session_state.mode == "Document":
 
     uploaded_files = st.file_uploader(
         "Upload documents",
-        type=["pdf"],
+        type=["pdf", "docx"],
         accept_multiple_files=True,
     )
+    st.caption("Supported file types: PDF and Word (.docx) only.")
 
     # Process any newly uploaded files
     if uploaded_files:
@@ -189,9 +190,11 @@ elif st.session_state.mode == "Document":
                 )
                 continue
 
+            file_suffix = os.path.splitext(file.name)[1].lower()
+
             tmp_path = None
             try:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+                with tempfile.NamedTemporaryFile(delete=False, suffix=file_suffix) as tmp:
                     tmp.write(file_bytes)
                     tmp_path = tmp.name
 
