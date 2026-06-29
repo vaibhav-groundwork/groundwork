@@ -189,7 +189,7 @@ def rag_node(state: RAGState) -> dict:
     status_message = (
         "📄 The document doesn't appear to cover this — see the explanation below."
         if declined
-        else "✅ Found an answer in your document."
+        else "✅ Found an answer in your documents."
     )
 
     return {
