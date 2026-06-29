@@ -127,26 +127,33 @@ def retrieve_relevant_chunks(query: str, collection, n_results: int = TOP_K_RESU
       expected to be considered. Per-document sub-queries guarantee every
       uploaded document contributes at least one chunk to the answer context.
 
-    Document-count cap:
-      When more distinct documents exist than n_results, only the first n_results
-      documents (by source name, alphabetically) are queried. This bounds total
-      retrieval cost as upload count grows — each additional document would
-      otherwise add a ChromaDB round-trip that scales linearly.
+    Chunk-count ceiling, not document-count ceiling:
+      Earlier versions of this function capped the NUMBER OF DOCUMENTS queried
+      once upload count exceeded n_results — this silently and deterministically
+      excluded whole documents (alphabetically-last ones) past that count, which
+      is a worse failure mode than the one this function exists to fix. Instead,
+      every document always receives at least 1 chunk, and only the TOTAL number
+      of chunks retrieved is bounded, by _MAX_TOTAL_CHUNKS. In the rare case where
+      document count exceeds _MAX_TOTAL_CHUNKS, total chunks retrieved may exceed
+      that ceiling slightly (each document still gets exactly 1) — full
+      representation is prioritized over staying exactly at the nominal cap.
 
     Per-document failure isolation:
       Each sub-query is wrapped in its own try/except. A single document's query
-      failure (e.g. a corrupt metadata filter) does not block retrieval from the
-      remaining documents — the failing source is logged and skipped, and
-      whatever results were already gathered are still returned.
+      failure does not block retrieval from the remaining documents — the
+      failing source is logged and skipped, and whatever results were already
+      gathered are still returned.
 
     n_results budget distribution:
-      The budget is divided evenly (integer division) across queried documents,
-      with any remainder given to the first document processed, so the total
-      chunk count returned stays at or near n_results.
+      For 2 or more documents, the effective budget (at least num_sources, at
+      most _MAX_TOTAL_CHUNKS) is divided evenly across documents via integer
+      division, with any remainder given to the first document processed.
 
     Returns a list of dicts with keys: text, source, distance — same shape as
     the original single-query implementation, so no caller needs to change.
     """
+    _MAX_TOTAL_CHUNKS = 12
+
     # ── Step 1: determine distinct source documents ───────────────────────────
     distinct_sources: set[str] = set()
     try:
@@ -161,7 +168,6 @@ def retrieve_relevant_chunks(query: str, collection, n_results: int = TOP_K_RESU
             type(exc).__name__,
             exc,
         )
-        # distinct_sources stays empty → treated as 0 sources → pooled fallback
 
     num_sources = len(distinct_sources)
     logger.info(
@@ -184,26 +190,30 @@ def retrieve_relevant_chunks(query: str, collection, n_results: int = TOP_K_RESU
     # ── Step 3: fair per-document retrieval for 2+ sources ───────────────────
     sorted_sources = sorted(distinct_sources)
 
-    if len(sorted_sources) > n_results:
-        excluded = len(sorted_sources) - n_results
-        logger.warning(
-            "retrieve_relevant_chunks: %d document(s) excluded from this query "
-            "due to the n_results=%d cap (querying first %d by name order).",
-            excluded,
-            n_results,
-            n_results,
-        )
-        sorted_sources = sorted_sources[:n_results]
+    # Every document gets at least 1 chunk — no document is ever fully
+    # excluded. Total chunks are capped at _MAX_TOTAL_CHUNKS regardless of
+    # document count.
+    effective_total = min(max(n_results, num_sources), _MAX_TOTAL_CHUNKS)
+    base = effective_total // num_sources
+    remainder = effective_total % num_sources
 
-    num_queried = len(sorted_sources)
-    base = n_results // num_queried
-    remainder = n_results % num_queried
+    if num_sources > _MAX_TOTAL_CHUNKS:
+        logger.warning(
+            "retrieve_relevant_chunks: %d documents exceeds the hard chunk "
+            "ceiling of %d — each will receive exactly 1 chunk, and total "
+            "results will exceed the usual budget to ensure every document "
+            "is represented.",
+            num_sources,
+            _MAX_TOTAL_CHUNKS,
+        )
+        base = 1
+        remainder = 0
 
     logger.info(
-        "retrieve_relevant_chunks: distributing n_results=%d across %d source(s) "
-        "— base=%d per source, first source gets +%d extra.",
-        n_results,
-        num_queried,
+        "retrieve_relevant_chunks: distributing %d total chunks across %d "
+        "source(s) — base=%d per source, first source gets +%d extra.",
+        effective_total,
+        num_sources,
         base,
         remainder,
     )
