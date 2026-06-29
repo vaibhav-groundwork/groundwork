@@ -28,7 +28,6 @@ from src.tracing import call_llm
 
 logger = logging.getLogger(__name__)
 
-import json
 
 # Tool schema for the gap-analysis decision (analyse_node's intermediate passes).
 # Replaces prompt-based JSON parsing — see judge_agent.py for the same pattern.
@@ -68,8 +67,10 @@ class ResearchState(TypedDict):
     next_query: str
     needs_more_search: bool
     research_notes: str
+    sources: list[dict]    # NEW: deduplicated {title, link} dicts, kept
+                            # separate from research_notes so prose stays
+                            # clean, mirrors rag_agent.py's sources field
     status_message: str
-
 
 # ── Node 1: search_node ───────────────────────────────────────────────────────
 
@@ -127,9 +128,17 @@ def search_node(state: ResearchState) -> dict:
             len(new_results),
             query,
         )
+        
+        existing_sources: list[dict] = state.get("sources", [])
+        new_sources = [
+            {"title": r["title"], "link": r["link"]}
+            for r in new_results
+            if r.get("link")
+        ]
 
         return {
             "search_results": existing_results + new_results,
+            "sources": existing_sources + new_sources,
             "search_count": search_count + 1,
             "status_message": status_message,
         }
@@ -143,6 +152,7 @@ def search_node(state: ResearchState) -> dict:
         )
         return {
             "search_results": existing_results,
+            "sources": state.get("sources", []),
             "search_count": search_count + 1,
             "status_message": "⚠️ Search failed, continuing with available information.",
         }
@@ -186,6 +196,7 @@ def analyse_node(state: ResearchState) -> dict:
                 "The brief will be limited — please verify the topic or try a more "
                 "specific query."
             ),
+            "sources": [],
             "status_message": "⚠️ No results found — brief will have limited information.",
         }
 
@@ -201,6 +212,7 @@ def analyse_node(state: ResearchState) -> dict:
             "needs_more_search": False,
             "next_query": "",
             "research_notes": research_notes,
+            "sources": _dedupe_sources(state.get("sources", [])),
             "status_message": "✅ Research complete — synthesising notes.",
         }
 
@@ -211,8 +223,8 @@ def analyse_node(state: ResearchState) -> dict:
         "You are a research analyst reviewing web search results. "
         "Your job is to identify gaps in the information gathered so far and decide "
         "whether one additional targeted search would meaningfully improve coverage. "
-        "Call the report_gap_analysis tool with your decision."
-        "Do not use em dashes (—) anywhere in your response. Use commas, periods, or parentheses instead.\n\n"
+        "Call the report_gap_analysis tool with your decision. "
+        "Do not use em dashes (—) anywhere in your response. Use commas, periods, or parentheses instead."
     )
     gap_messages = [
         {
@@ -264,6 +276,7 @@ def analyse_node(state: ResearchState) -> dict:
             "needs_more_search": True,
             "next_query": next_query,
             "research_notes": "",
+            "sources": _dedupe_sources(state.get("sources", [])),
             "status_message": (
                 f"🧠 Reviewing findings — found {len(search_results)} source(s) so far"
             ),
@@ -275,6 +288,7 @@ def analyse_node(state: ResearchState) -> dict:
         "needs_more_search": False,
         "next_query": "",
         "research_notes": research_notes,
+        "sources": _dedupe_sources(state.get("sources", [])),
         "status_message": "✅ Research complete — synthesising notes.",
     }
 
@@ -292,6 +306,21 @@ def _format_snippets(search_results: list[dict]) -> str:
         )
     return "\n\n".join(lines)
 
+def _dedupe_sources(sources: list[dict]) -> list[dict]:
+    """
+    Deduplicates a sources list by link, preserving first-seen order.
+    Called once, on the final research pass, since intermediate passes
+    don't need a clean list — only the version actually returned to
+    downstream consumers (eventually synthesis_node) needs to be clean.
+    """
+    seen = set()
+    deduped = []
+    for s in sources:
+        link = s.get("link", "")
+        if link and link not in seen:
+            seen.add(link)
+            deduped.append(s)
+    return deduped
 
 def _synthesise_notes(state: ResearchState) -> str:
     """
@@ -304,11 +333,15 @@ def _synthesise_notes(state: ResearchState) -> str:
     synth_system = (
         "You are a research analyst preparing a structured briefing document. "
         "Synthesise the search results below into clean, well-organised research notes. "
-        "Group findings by theme. Include specific facts and cite sources by their URL. "
+        "Group findings by theme. Include specific facts. "
+        "Do NOT include URLs or any inline citation markers in your prose — sources are "
+        "tracked and displayed separately by the application, so your writing should read "
+        "as clean narrative text with no parenthetical links. "
         "Write for a downstream writer agent — this is the input they will work from, "
-        "not a final deliverable. Be thorough and factual; do not pad or summarise vaguely."
-        "Do not use em dashes (—) anywhere in your response. Use commas, periods, or parentheses instead.\n\n"
+        "not a final deliverable. Be thorough and factual; do not pad or summarise vaguely. "
+        "Do not use em dashes (—) anywhere in your response. Use commas, periods, or parentheses instead."
     )
+
     synth_messages = [
         {
             "role": "user",
