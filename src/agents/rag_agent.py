@@ -111,6 +111,7 @@ def rag_node(state: RAGState) -> dict:
     context_text = "\n\n---\n\n".join(context_parts)
 
     # ── Prompt construction ───────────────────────────────────────────────────
+
     system_prompt = (
         "You are a research assistant answering questions strictly from the document "
         "excerpts provided below. Do not use any outside knowledge or make inferences "
@@ -119,8 +120,8 @@ def rag_node(state: RAGState) -> dict:
         "the question well, say so clearly and honestly — do not guess. Where possible, "
         "mention specifically what the document *does* cover based on the excerpts, so "
         "the user understands the scope of available content.\n\n"
-        "Always cite the source filename when referencing information from a specific excerpt."
-        "Do not use em dashes (—) anywhere in your response. Use commas, periods, or parentheses instead.\n\n"
+        "Always cite the source filename when referencing information from a specific excerpt. "
+        "Do not use em dashes (—) anywhere in your response. Use commas, periods, or parentheses instead."
     )
 
     user_message = (
@@ -156,11 +157,18 @@ def rag_node(state: RAGState) -> dict:
     answer: str = response.choices[0].message.content.strip()
     logger.info("rag_node: answer generated, length=%d characters.", len(answer))
 
-    # ── Build sources list for UI citation display ────────────────────────────
-    sources = [
-        {"source": c.get("source", "unknown"), "text": c.get("text", "")}
-        for c in chunks
-    ]
+    # ── Build sources list for UI citation display (deduplicated by filename) ──
+    # chunks and context_text are NOT modified — every retrieved chunk still
+    # reaches Claude, even if multiple chunks share the same source filename.
+    # Only the list shown to the user in the UI is deduplicated, so each
+    # document appears at most once in the citations panel.
+    seen_sources: set[str] = set()
+    sources: list[dict] = []
+    for c in chunks:
+        source_name = c.get("source", "unknown")
+        if source_name not in seen_sources:
+            seen_sources.add(source_name)
+            sources.append({"source": source_name, "text": c.get("text", "")})
 
     # Distinguish "found a real answer" from "honestly declined" so the status
     # message doesn't misleadingly claim success on a correct refusal. This is
