@@ -6,10 +6,32 @@ Slice 2 scope: research mode + document mode (single question each).
   - Document mode: PDF upload, ingestion, and single-question RAG via rag_node
   - Mode toggle in sidebar; each mode maintains independent session state
 
+Slice 3 scope: multi-turn accumulation across both modes.
+  - Research mode and Document mode maintain fully independent accumulation,
+    chat-style history, and report-triggering — research_material/
+    research_sources/research_report_flag and document_material/
+    document_sources/document_report_flag are never combined, since document
+    mode's groundedness guarantee (answers strictly from uploaded files) must
+    never blend with research mode's web-sourced material.
+  - Each mode renders its own scrolling history and 'Generate Full Report'
+    button inside its own section; the in-progress current result renders below.
+  - generate_report flags are set on click; report generation logic deferred
+    to Slice 4.
+  - Follow-up research questions are routed intelligently — answered directly
+    from accumulated context when possible, or triggering genuine new web
+    search when the question covers new ground, via route_followup_node and
+    answer_from_notes_node in the research graph.
+
+Slice 4 scope: Generate Full Report wiring. Each mode independently calls
+synthesis_node then judge_node exactly once per report (guarded against
+re-running on every Streamlit rerun via research_report/document_report being
+None-checked before generation). Full score breakdown (all four dimensions with
+reasoning) shown as a table by default. Once generated, a report is a snapshot
+— asking further questions afterward does not auto-regenerate it. Regeneration
+(using previous_report and new context, or judge feedback) and export are
+deferred to later passes.
+
 Deferred to later passes:
-  - Multi-turn question accumulation within a session
-  - Synthesis agent (brief generation)
-  - Judge agent (quality scoring)
   - Export (DOCX / PPTX generation and download)
 """
 
@@ -29,6 +51,8 @@ st.set_page_config(
 )
 
 from src.agents.rag_agent import rag_node  # noqa: E402
+from src.agents.synthesis_agent import synthesis_node  # noqa: E402
+from src.agents.judge_agent import judge_node  # noqa: E402
 from src.config import MAX_FILE_SIZE_MB  # noqa: E402
 from src.graph import run_research  # noqa: E402
 from src.ingestion import get_chroma_collection, ingest_document  # noqa: E402
@@ -54,6 +78,35 @@ def render_sources(sources: list[dict]) -> None:
                 st.markdown(f"- [{title}]({link})")
             else:
                 st.markdown(f"- {title}")
+
+
+def render_history_entry(entry: dict) -> None:
+    """Renders one accumulated Q&A entry in chat-style format."""
+    if entry["mode"] == "research":
+        st.caption("🔍 Research")
+        st.markdown(f"### {entry['topic']}")
+        st.markdown(entry["notes"])
+    else:
+        st.caption("📄 Document")
+        st.markdown(f"### {entry['question']}")
+        st.markdown(entry["answer"])
+    if entry.get("sources"):
+        render_sources(entry["sources"])
+    st.divider()
+
+
+def get_research_context() -> str:
+    """
+    Concatenates all accumulated research notes from this session into one
+    context string, used to let follow-up questions route intelligently
+    instead of always triggering a fresh, contextless web search.
+    Returns an empty string if no research questions have been asked yet.
+    """
+    if not st.session_state.research_material:
+        return ""
+    return "\n\n---\n\n".join(
+        f"Topic: {e['topic']}\n{e['notes']}" for e in st.session_state.research_material
+    )
 
 
 # ── Session state initialisation ──────────────────────────────────────────────
@@ -84,6 +137,37 @@ if "document_result" not in st.session_state:
 if "document_question" not in st.session_state:
     st.session_state.document_question = None
 
+# Multi-turn accumulation state — fully independent per mode, never combined
+if "research_material" not in st.session_state:
+    st.session_state.research_material = []
+
+if "research_sources" not in st.session_state:
+    st.session_state.research_sources = []
+
+if "research_report_flag" not in st.session_state:
+    st.session_state.research_report_flag = False
+
+if "research_report" not in st.session_state:
+    st.session_state.research_report = None
+
+if "research_judge_result" not in st.session_state:
+    st.session_state.research_judge_result = None
+
+if "document_material" not in st.session_state:
+    st.session_state.document_material = []
+
+if "document_sources" not in st.session_state:
+    st.session_state.document_sources = []
+
+if "document_report_flag" not in st.session_state:
+    st.session_state.document_report_flag = False
+
+if "document_report" not in st.session_state:
+    st.session_state.document_report = None
+
+if "document_judge_result" not in st.session_state:
+    st.session_state.document_judge_result = None
+
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
@@ -103,6 +187,54 @@ with st.sidebar:
 # ── Research mode ─────────────────────────────────────────────────────────────
 
 if st.session_state.mode == "Research":
+
+    for entry in st.session_state.research_material:
+        render_history_entry(entry)
+
+    if len(st.session_state.research_material) > 0:
+        st.caption(f"📋 {len(st.session_state.research_material)} question(s) gathered")
+        if not st.session_state.research_report_flag:
+            if st.button("Generate Full Report", key="research_generate_report"):
+                st.session_state.research_report_flag = True
+                st.rerun()
+
+        if st.session_state.research_report_flag and st.session_state.research_report is None:
+            source_material = "\n\n---\n\n".join(
+                f"Topic: {e['topic']}\n{e['notes']}" for e in st.session_state.research_material
+            )
+            with st.spinner("Generating your report…"):
+                synthesis_result = synthesis_node({
+                    "topic": "Research findings",
+                    "source_material": source_material,
+                    "source_list": st.session_state.research_sources,
+                    "previous_report": "",
+                    "weakest_dimension": "",
+                    "weakest_dimension_feedback": "",
+                })
+                judge_result = judge_node({
+                    "topic": "Research findings",
+                    "source_material": source_material,
+                    "report": synthesis_result["brief"],
+                })
+            st.session_state.research_report = synthesis_result
+            st.session_state.research_judge_result = judge_result
+            st.rerun()
+
+        if st.session_state.research_report is not None:
+            st.markdown(st.session_state.research_report["brief"])
+            if st.session_state.research_report.get("sources_section"):
+                st.markdown(st.session_state.research_report["sources_section"])
+
+            judge = st.session_state.research_judge_result
+            st.divider()
+            st.markdown(f"### Quality Score: {judge['overall_score']}/5.0")
+            st.caption(judge["score_explanation"])
+            st.table([
+                {"Dimension": dim.capitalize(), "Score": f"{data['score']}/5", "Reasoning": data["reasoning"]}
+                for dim, data in judge["scores"].items()
+            ])
+
+        st.divider()
 
     if st.session_state.research_result is None:
 
@@ -129,7 +261,7 @@ if st.session_state.mode == "Research":
             else:
                 form_placeholder.empty()
                 with st.spinner("Researching — this may take a minute…"):
-                    result = run_research(topic)
+                    result = run_research(topic, prior_context=get_research_context())
 
                 st.session_state.research_result = result
                 st.session_state.current_topic = topic
@@ -158,15 +290,100 @@ if st.session_state.mode == "Research":
 
         st.divider()
 
-        if st.button("Ask another question"):
-            st.session_state.research_result = None
-            st.session_state.current_topic = None
-            st.rerun()
+        col1, col2 = st.columns([3, 1])
+
+        with col1:
+            if st.button("Ask another question", key="research_ask_another"):
+                if st.session_state.research_result is not None:
+                    st.session_state.research_material.append({
+                        "mode": "research",
+                        "topic": st.session_state.current_topic,
+                        "notes": st.session_state.research_result["research_notes"],
+                        "sources": st.session_state.research_result.get("sources", []),
+                    })
+                    existing_urls = {s.get("url") or s.get("link") for s in st.session_state.research_sources}
+                    for source in st.session_state.research_result.get("sources", []):
+                        key = source.get("url") or source.get("link")
+                        if key not in existing_urls:
+                            st.session_state.research_sources.append(source)
+                            existing_urls.add(key)
+                st.session_state.research_result = None
+                st.session_state.current_topic = None
+                st.rerun()
+
+        with col2:
+            if not st.session_state.research_report_flag:
+                if st.button("Generate Full Report", key="research_generate_from_result"):
+                    if st.session_state.research_result is not None:
+                        st.session_state.research_material.append({
+                            "mode": "research",
+                            "topic": st.session_state.current_topic,
+                            "notes": st.session_state.research_result["research_notes"],
+                            "sources": st.session_state.research_result.get("sources", []),
+                        })
+                        existing_urls = {s.get("url") or s.get("link") for s in st.session_state.research_sources}
+                        for source in st.session_state.research_result.get("sources", []):
+                            key = source.get("url") or source.get("link")
+                            if key not in existing_urls:
+                                st.session_state.research_sources.append(source)
+                                existing_urls.add(key)
+                    st.session_state.research_result = None
+                    st.session_state.current_topic = None
+                    st.session_state.research_report_flag = True
+                    st.rerun()
 
 
 # ── Document mode ─────────────────────────────────────────────────────────────
 
 elif st.session_state.mode == "Document":
+
+    for entry in st.session_state.document_material:
+        render_history_entry(entry)
+
+    if len(st.session_state.document_material) > 0:
+        st.caption(f"📋 {len(st.session_state.document_material)} question(s) gathered")
+        if not st.session_state.document_report_flag:
+            if st.button("Generate Full Report", key="document_generate_report"):
+                st.session_state.document_report_flag = True
+                st.rerun()
+
+        if st.session_state.document_report_flag and st.session_state.document_report is None:
+            source_material = "\n\n---\n\n".join(
+                f"Question: {e['question']}\n{e['answer']}" for e in st.session_state.document_material
+            )
+            with st.spinner("Generating your report…"):
+                synthesis_result = synthesis_node({
+                    "topic": "Document findings",
+                    "source_material": source_material,
+                    "source_list": st.session_state.document_sources,
+                    "previous_report": "",
+                    "weakest_dimension": "",
+                    "weakest_dimension_feedback": "",
+                })
+                judge_result = judge_node({
+                    "topic": "Document findings",
+                    "source_material": source_material,
+                    "report": synthesis_result["brief"],
+                })
+            st.session_state.document_report = synthesis_result
+            st.session_state.document_judge_result = judge_result
+            st.rerun()
+
+        if st.session_state.document_report is not None:
+            st.markdown(st.session_state.document_report["brief"])
+            if st.session_state.document_report.get("sources_section"):
+                st.markdown(st.session_state.document_report["sources_section"])
+
+            judge = st.session_state.document_judge_result
+            st.divider()
+            st.markdown(f"### Quality Score: {judge['overall_score']}/5.0")
+            st.caption(judge["score_explanation"])
+            st.table([
+                {"Dimension": dim.capitalize(), "Score": f"{data['score']}/5", "Reasoning": data["reasoning"]}
+                for dim, data in judge["scores"].items()
+            ])
+
+        st.divider()
 
     uploaded_files = st.file_uploader(
         "Upload documents",
@@ -279,10 +496,47 @@ elif st.session_state.mode == "Document":
 
             st.divider()
 
-            if st.button("Ask another question"):
-                st.session_state.document_result = None
-                st.session_state.document_question = None
-                st.rerun()
+            col1, col2 = st.columns([3, 1])
+
+            with col1:
+                if st.button("Ask another question", key="document_ask_another"):
+                    if st.session_state.document_result is not None:
+                        st.session_state.document_material.append({
+                            "mode": "document",
+                            "question": st.session_state.document_question,
+                            "answer": st.session_state.document_result["answer"],
+                            "sources": st.session_state.document_result.get("sources", []),
+                        })
+                        existing_urls = {s.get("url") or s.get("link") for s in st.session_state.document_sources}
+                        for source in st.session_state.document_result.get("sources", []):
+                            key = source.get("url") or source.get("link")
+                            if key not in existing_urls:
+                                st.session_state.document_sources.append(source)
+                                existing_urls.add(key)
+                    st.session_state.document_result = None
+                    st.session_state.document_question = None
+                    st.rerun()
+
+            with col2:
+                if not st.session_state.document_report_flag:
+                    if st.button("Generate Full Report", key="document_generate_from_result"):
+                        if st.session_state.document_result is not None:
+                            st.session_state.document_material.append({
+                                "mode": "document",
+                                "question": st.session_state.document_question,
+                                "answer": st.session_state.document_result["answer"],
+                                "sources": st.session_state.document_result.get("sources", []),
+                            })
+                            existing_urls = {s.get("url") or s.get("link") for s in st.session_state.document_sources}
+                            for source in st.session_state.document_result.get("sources", []):
+                                key = source.get("url") or source.get("link")
+                                if key not in existing_urls:
+                                    st.session_state.document_sources.append(source)
+                                    existing_urls.add(key)
+                        st.session_state.document_result = None
+                        st.session_state.document_question = None
+                        st.session_state.document_report_flag = True
+                        st.rerun()
 
     else:
 
