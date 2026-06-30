@@ -38,7 +38,13 @@ import logging
 
 from langgraph.graph import END, StateGraph
 
-from src.agents.research_agent import ResearchState, analyse_node, search_node
+from src.agents.research_agent import (
+    ResearchState,
+    analyse_node,
+    answer_from_notes_node,
+    route_followup_node,
+    search_node,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,10 +78,19 @@ def build_research_graph():
     """
     graph = StateGraph(ResearchState)
 
+    graph.add_node("route_followup", route_followup_node)
+    graph.add_node("answer_from_notes", answer_from_notes_node)
     graph.add_node("search", search_node)
     graph.add_node("analyse", analyse_node)
 
-    graph.set_entry_point("search")
+    graph.set_entry_point("route_followup")
+
+    graph.add_conditional_edges(
+        "route_followup",
+        lambda state: state["route_decision"],
+        {"needs_search": "search", "answer_from_context": "answer_from_notes"},
+    )
+    graph.add_edge("answer_from_notes", END)
 
     graph.add_edge("search", "analyse")
     graph.add_conditional_edges(
@@ -94,7 +109,7 @@ RESEARCH_GRAPH = build_research_graph()
 
 # ── Public entry point ────────────────────────────────────────────────────────
 
-def run_research(topic: str) -> dict:
+def run_research(topic: str, prior_context: str = "") -> dict:
     """
     Validated public entry point for the research pipeline.
 
@@ -108,6 +123,9 @@ def run_research(topic: str) -> dict:
     Args:
         topic: The research question or subject. Must be a non-empty,
                non-whitespace string.
+        prior_context: Accumulated research notes from earlier questions in
+               this session, used to route follow-ups intelligently. Empty
+               string for the first question of a session.
 
     Returns:
         The final ResearchState dict produced by the graph on success, or a
@@ -129,11 +147,14 @@ def run_research(topic: str) -> dict:
 
     initial_state: ResearchState = {
         "topic": topic.strip(),
+        "prior_context": prior_context,
+        "route_decision": "",
         "search_results": [],
         "search_count": 0,
         "next_query": "",
         "needs_more_search": True,
         "research_notes": "",
+        "sources": [],
         "status_message": "",
     }
 

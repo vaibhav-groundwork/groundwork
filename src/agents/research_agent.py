@@ -57,20 +57,161 @@ _GAP_ANALYSIS_TOOL = {
     },
 }
 
+_FOLLOWUP_ROUTING_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "report_followup_routing",
+        "description": "Decide whether a follow-up question can be answered from existing research notes or requires new web search.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "needs_search": {
+                    "type": "boolean",
+                    "description": "True if the question asks about something not covered in the prior notes and requires new web research.",
+                },
+            },
+            "required": ["needs_search"],
+        },
+    },
+}
+
 
 # ── State schema ──────────────────────────────────────────────────────────────
 
 class ResearchState(TypedDict):
     topic: str
+    prior_context: str     # accumulated research notes from earlier questions
+                            # this session, empty string if this is the first
+                            # question. Set by app.py before invoking the graph.
+    route_decision: str    # "answer_from_context" or "needs_search", set by
+                            # route_followup_node before the graph branches.
     search_results: list[dict]
     search_count: int
     next_query: str
     needs_more_search: bool
     research_notes: str
-    sources: list[dict]    # NEW: deduplicated {title, link} dicts, kept
+    sources: list[dict]    # deduplicated {title, link} dicts, kept
                             # separate from research_notes so prose stays
                             # clean, mirrors rag_agent.py's sources field
     status_message: str
+
+# ── Node 0: route_followup_node ───────────────────────────────────────────────
+
+def route_followup_node(state: ResearchState) -> dict:
+    """
+    LangGraph node — only meaningful when prior_context is non-empty (i.e. this
+    is a follow-up question within an existing research session, not the first
+    question). Decides whether the new question can be answered directly from
+    already-gathered research notes, or genuinely requires new web search.
+
+    On the very first question of a session (prior_context == ""), short-circuits
+    straight to needs_search=True with no Claude call, since there is nothing
+    to answer from yet.
+
+    Defaults to needs_search=True on any tool-call failure — the safer failure
+    mode here is running an unnecessary search, not silently answering from
+    possibly-insufficient context.
+    """
+    prior_context = state.get("prior_context", "")
+
+    if not prior_context:
+        logger.info("route_followup_node: no prior_context — routing to needs_search.")
+        return {"route_decision": "needs_search"}
+
+    routing_system = (
+        "You are deciding how to handle a follow-up question in an ongoing research "
+        "session. Call the report_followup_routing tool with your decision. "
+        "Do not use em dashes (—) anywhere in your response."
+    )
+    routing_messages = [
+        {
+            "role": "user",
+            "content": (
+                f"Prior research notes from this session:\n\n{prior_context}\n\n"
+                f"New question: {state['topic']}\n\n"
+                "Can this question be fully and accurately answered using ONLY the "
+                "prior research notes above, with no new information needed? Or does "
+                "it require new web research because it asks about something not "
+                "covered in the prior notes?"
+            ),
+        }
+    ]
+
+    try:
+        response = call_llm(
+            model=HAIKU_MODEL,
+            messages=routing_messages,
+            system=routing_system,
+            max_tokens=MAX_TOKENS_HAIKU,
+            cache_system_prompt=True,
+            tools=[_FOLLOWUP_ROUTING_TOOL],
+            tool_choice={"type": "function", "function": {"name": "report_followup_routing"}},
+        )
+        tool_calls = response.choices[0].message.tool_calls
+        if not tool_calls:
+            raise ValueError("call_llm returned no tool_calls for report_followup_routing.")
+        decision = json.loads(tool_calls[0].function.arguments)
+        needs_search = bool(decision.get("needs_search", True))
+    except Exception as exc:
+        logger.warning(
+            "route_followup_node: routing tool call failed — %s: %s. "
+            "Defaulting to needs_search=True to avoid silently giving an unsupported answer.",
+            type(exc).__name__,
+            exc,
+        )
+        needs_search = True
+
+    route_decision = "needs_search" if needs_search else "answer_from_context"
+    logger.info("route_followup_node: route_decision=%r", route_decision)
+    return {"route_decision": route_decision}
+
+
+# ── Node 0b: answer_from_notes_node ───────────────────────────────────────────
+
+def answer_from_notes_node(state: ResearchState) -> dict:
+    """
+    LangGraph node — answers a follow-up question directly from existing
+    research notes, with no new web search. Reached only when
+    route_followup_node decides route_decision == "answer_from_context".
+
+    No new sources are produced here (sources field is left empty for this
+    pass), since the answer is grounded entirely in already-accumulated
+    context whose sources are already tracked by the calling application.
+    """
+    answer_system = (
+        "You are answering a follow-up question using only previously gathered "
+        "research notes. Do not invent information not present in the notes — "
+        "if something genuinely isn't covered, say so honestly rather than guessing. "
+        "Do not use em dashes (—) anywhere in your response. Use commas, periods, or parentheses instead."
+    )
+    answer_messages = [
+        {
+            "role": "user",
+            "content": (
+                f"Prior research notes:\n\n{state['prior_context']}\n\n"
+                f"Question: {state['topic']}\n\n"
+                "Please answer the question using only the notes above."
+            ),
+        }
+    ]
+
+    logger.info("answer_from_notes_node: answering follow-up from prior_context, no new search.")
+
+    response = call_llm(
+        model=HAIKU_MODEL,
+        messages=answer_messages,
+        system=answer_system,
+        max_tokens=MAX_TOKENS_HAIKU,
+        cache_system_prompt=True,
+    )
+
+    return {
+        "research_notes": strip_em_dashes(response.choices[0].message.content.strip()),
+        "sources": [],
+        "needs_more_search": False,
+        "status_message": "✅ Answered from existing research — no new search needed.",
+    }
+
 
 # ── Node 1: search_node ───────────────────────────────────────────────────────
 
