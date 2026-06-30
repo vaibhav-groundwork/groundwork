@@ -59,4 +59,24 @@ A running list of ideas discussed during v1 build, deliberately deferred for lat
   rather than inferred from string matching — same structured-output pattern
   already used in analyse_node's needs_more_search decision
 
+## Known issue — follow-up search queries not context-aware
+
+When a follow-up question in research mode requires new web search 
+(route_followup_node decides needs_search=True), the first search query is 
+still built directly from the raw follow-up text (state["topic"]), with no 
+awareness of prior_context. This works fine when the follow-up is naturally 
+self-contained, but produces a poor/irrelevant search when the follow-up only 
+makes sense in light of prior conversation (e.g. "research specific to USA" 
+after a prior question about "AI trends in 2026" searched literally, not 
+resolved to something like "AI trends 2026 United States").
+
+Proposed fix (designed, not yet implemented): add a _resolve_search_query() 
+helper, using the same tool-calling pattern as _GAP_ANALYSIS_TOOL, called from 
+search_node only on the first pass of a follow-up with prior_context. Resolves 
+the query for search purposes only — state["topic"] stays untouched so chat 
+history display is unaffected. No new graph node needed.
+
+Priority: post-launch refinement, not launch-blocking — search still returns 
+real results, just sometimes less targeted than ideal on context-dependent 
+follow-ups.
 *Add new ideas to this file as they come up during the v1 build — review when v1 ships.*
