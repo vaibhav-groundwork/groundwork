@@ -31,6 +31,22 @@ reasoning) shown as a table by default. Once generated, a report is a snapshot
 (using previous_report and new context, or judge feedback) and export are
 deferred to later passes.
 
+Slice 5 scope: Regenerate Report button per mode, independently. Each mode
+exposes a 'Regenerate Report' button below the judge score table, capped at 1
+regeneration per mode (research_regen_count / document_regen_count). On click,
+the full current accumulated history at the time of click is used to rebuild
+source_material. synthesis_node is called with the existing brief as
+previous_report and the weakest-scoring dimension name and its reasoning as
+weakest_dimension and weakest_dimension_feedback (weakest dimension determined
+by min() over scores dict). judge_node is then called on the new brief.
+The original report (research_report/research_judge_result or
+document_report/document_judge_result) is never overwritten — the regenerated
+result is stored in research_report_regen/research_judge_regen or
+document_report_regen/document_judge_regen and rendered below the original,
+with a one-liner showing which dimension was targeted and the before/after
+overall score. The other mode's state is never touched. After the cap is
+reached, a caption replaces the button.
+
 Deferred to later passes:
   - Export (DOCX / PPTX generation and download)
 """
@@ -153,6 +169,15 @@ if "research_report" not in st.session_state:
 if "research_judge_result" not in st.session_state:
     st.session_state.research_judge_result = None
 
+if "research_regen_count" not in st.session_state:
+    st.session_state.research_regen_count = 0
+
+if "research_report_regen" not in st.session_state:
+    st.session_state.research_report_regen = None
+
+if "research_judge_regen" not in st.session_state:
+    st.session_state.research_judge_regen = None
+
 if "document_material" not in st.session_state:
     st.session_state.document_material = []
 
@@ -167,6 +192,15 @@ if "document_report" not in st.session_state:
 
 if "document_judge_result" not in st.session_state:
     st.session_state.document_judge_result = None
+
+if "document_regen_count" not in st.session_state:
+    st.session_state.document_regen_count = 0
+
+if "document_report_regen" not in st.session_state:
+    st.session_state.document_report_regen = None
+
+if "document_judge_regen" not in st.session_state:
+    st.session_state.document_judge_regen = None
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -233,6 +267,58 @@ if st.session_state.mode == "Research":
                 {"Dimension": dim.capitalize(), "Score": f"{data['score']}/5", "Reasoning": data["reasoning"]}
                 for dim, data in judge["scores"].items()
             ])
+
+            if st.session_state.research_regen_count < 1:
+                if st.button("Regenerate Report", key="research_regenerate_report"):
+                    source_material = "\n\n---\n\n".join(
+                        f"Topic: {e['topic']}\n{e['notes']}" for e in st.session_state.research_material
+                    )
+                    weakest_dim = min(
+                        st.session_state.research_judge_result["scores"],
+                        key=lambda d: st.session_state.research_judge_result["scores"][d]["score"],
+                    )
+                    weakest_feedback = st.session_state.research_judge_result["scores"][weakest_dim]["reasoning"]
+                    with st.spinner("Regenerating your report…"):
+                        new_synthesis = synthesis_node({
+                            "topic": "Research findings",
+                            "source_material": source_material,
+                            "source_list": st.session_state.research_sources,
+                            "previous_report": st.session_state.research_report["brief"],
+                            "weakest_dimension": weakest_dim,
+                            "weakest_dimension_feedback": weakest_feedback,
+                        })
+                        new_judge = judge_node({
+                            "topic": "Research findings",
+                            "source_material": source_material,
+                            "report": new_synthesis["brief"],
+                        })
+                    st.session_state.research_report_regen = new_synthesis
+                    st.session_state.research_judge_regen = new_judge
+                    st.session_state.research_regen_count += 1
+                    st.rerun()
+            else:
+                st.caption("Maximum regenerations reached.")
+
+            if st.session_state.research_report_regen is not None:
+                st.divider()
+                st.markdown("#### 📈 Regenerated Report")
+                weakest_dim = min(
+                    st.session_state.research_judge_result["scores"],
+                    key=lambda d: st.session_state.research_judge_result["scores"][d]["score"],
+                )
+                original_score = st.session_state.research_judge_result["overall_score"]
+                regen_score = st.session_state.research_judge_regen["overall_score"]
+                st.caption(f"Targeted **{weakest_dim}** dimension — overall score {original_score}/5.0 → {regen_score}/5.0")
+                st.markdown(st.session_state.research_report_regen["brief"])
+                if st.session_state.research_report_regen.get("sources_section"):
+                    st.markdown(st.session_state.research_report_regen["sources_section"])
+                st.divider()
+                st.markdown(f"#### Updated Quality Score: {st.session_state.research_judge_regen['overall_score']}/5.0")
+                st.caption(st.session_state.research_judge_regen["score_explanation"])
+                st.table([
+                    {"Dimension": dim.capitalize(), "Score": f"{data['score']}/5", "Reasoning": data["reasoning"]}
+                    for dim, data in st.session_state.research_judge_regen["scores"].items()
+                ])
 
         st.divider()
 
@@ -382,6 +468,58 @@ elif st.session_state.mode == "Document":
                 {"Dimension": dim.capitalize(), "Score": f"{data['score']}/5", "Reasoning": data["reasoning"]}
                 for dim, data in judge["scores"].items()
             ])
+
+            if st.session_state.document_regen_count < 1:
+                if st.button("Regenerate Report", key="document_regenerate_report"):
+                    source_material = "\n\n---\n\n".join(
+                        f"Question: {e['question']}\n{e['answer']}" for e in st.session_state.document_material
+                    )
+                    weakest_dim = min(
+                        st.session_state.document_judge_result["scores"],
+                        key=lambda d: st.session_state.document_judge_result["scores"][d]["score"],
+                    )
+                    weakest_feedback = st.session_state.document_judge_result["scores"][weakest_dim]["reasoning"]
+                    with st.spinner("Regenerating your report…"):
+                        new_synthesis = synthesis_node({
+                            "topic": "Document findings",
+                            "source_material": source_material,
+                            "source_list": st.session_state.document_sources,
+                            "previous_report": st.session_state.document_report["brief"],
+                            "weakest_dimension": weakest_dim,
+                            "weakest_dimension_feedback": weakest_feedback,
+                        })
+                        new_judge = judge_node({
+                            "topic": "Document findings",
+                            "source_material": source_material,
+                            "report": new_synthesis["brief"],
+                        })
+                    st.session_state.document_report_regen = new_synthesis
+                    st.session_state.document_judge_regen = new_judge
+                    st.session_state.document_regen_count += 1
+                    st.rerun()
+            else:
+                st.caption("Maximum regenerations reached.")
+
+            if st.session_state.document_report_regen is not None:
+                st.divider()
+                st.markdown("#### 📈 Regenerated Report")
+                weakest_dim = min(
+                    st.session_state.document_judge_result["scores"],
+                    key=lambda d: st.session_state.document_judge_result["scores"][d]["score"],
+                )
+                original_score = st.session_state.document_judge_result["overall_score"]
+                regen_score = st.session_state.document_judge_regen["overall_score"]
+                st.caption(f"Targeted **{weakest_dim}** dimension — overall score {original_score}/5.0 → {regen_score}/5.0")
+                st.markdown(st.session_state.document_report_regen["brief"])
+                if st.session_state.document_report_regen.get("sources_section"):
+                    st.markdown(st.session_state.document_report_regen["sources_section"])
+                st.divider()
+                st.markdown(f"#### Updated Quality Score: {st.session_state.document_judge_regen['overall_score']}/5.0")
+                st.caption(st.session_state.document_judge_regen["score_explanation"])
+                st.table([
+                    {"Dimension": dim.capitalize(), "Score": f"{data['score']}/5", "Reasoning": data["reasoning"]}
+                    for dim, data in st.session_state.document_judge_regen["scores"].items()
+                ])
 
         st.divider()
 
