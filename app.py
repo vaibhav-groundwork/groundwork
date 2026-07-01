@@ -47,8 +47,12 @@ with a one-liner showing which dimension was targeted and the before/after
 overall score. The other mode's state is never touched. After the cap is
 reached, a caption replaces the button.
 
-Deferred to later passes:
-  - Export (DOCX / PPTX generation and download)
+Slice 6 scope: Export. Below each mode's report, users select version
+  (Original or Regenerated, if available) and format (DOCX or PPTX), then
+  click Download Report. The exporter is called once and the resulting bytes
+  cached in session state (research_export_bytes / document_export_bytes)
+  keyed by a version+format composite string — switching selection correctly
+  invalidates the cache and re-exports. The two modes are fully independent.
 """
 
 import os
@@ -69,6 +73,8 @@ st.set_page_config(
 from src.agents.rag_agent import rag_node  # noqa: E402
 from src.agents.synthesis_agent import synthesis_node  # noqa: E402
 from src.agents.judge_agent import judge_node  # noqa: E402
+from src.exporters.docx_export import export_to_docx  # noqa: E402
+from src.exporters.pptx_export import export_to_pptx  # noqa: E402
 from src.config import MAX_FILE_SIZE_MB  # noqa: E402
 from src.graph import run_research  # noqa: E402
 from src.ingestion import get_chroma_collection, ingest_document  # noqa: E402
@@ -178,6 +184,12 @@ if "research_report_regen" not in st.session_state:
 if "research_judge_regen" not in st.session_state:
     st.session_state.research_judge_regen = None
 
+if "research_export_bytes" not in st.session_state:
+    st.session_state.research_export_bytes = None
+
+if "research_export_format" not in st.session_state:
+    st.session_state.research_export_format = None
+
 if "document_material" not in st.session_state:
     st.session_state.document_material = []
 
@@ -201,6 +213,12 @@ if "document_report_regen" not in st.session_state:
 
 if "document_judge_regen" not in st.session_state:
     st.session_state.document_judge_regen = None
+
+if "document_export_bytes" not in st.session_state:
+    st.session_state.document_export_bytes = None
+
+if "document_export_format" not in st.session_state:
+    st.session_state.document_export_format = None
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -319,6 +337,52 @@ if st.session_state.mode == "Research":
                     {"Dimension": dim.capitalize(), "Score": f"{data['score']}/5", "Reasoning": data["reasoning"]}
                     for dim, data in st.session_state.research_judge_regen["scores"].items()
                 ])
+
+            version_options = (
+                ["Original Report", "Regenerated Report"]
+                if st.session_state.research_report_regen is not None
+                else ["Original Report"]
+            )
+            st.divider()
+            st.markdown("#### Export Report")
+            export_version = st.radio("Version", options=version_options, horizontal=True, key="research_export_version")
+            export_format = st.selectbox("Format", options=["DOCX", "PPTX"], key="research_export_format_select")
+            cache_key = f"{export_format}-{export_version}"
+            if st.session_state.research_export_format != cache_key:
+                st.session_state.research_export_bytes = None
+                st.session_state.research_export_format = None
+            if st.button("Download Report", key="research_download_btn"):
+                if "Regenerated" in export_version:
+                    brief = st.session_state.research_report_regen["brief"]
+                    sources_section = st.session_state.research_report_regen.get("sources_section", "")
+                else:
+                    brief = st.session_state.research_report["brief"]
+                    sources_section = st.session_state.research_report.get("sources_section", "")
+                with st.spinner("Preparing export…"):
+                    if export_format == "DOCX":
+                        path = export_to_docx(topic="Research findings", brief=brief, sources_section=sources_section)
+                    else:
+                        path = export_to_pptx(topic="Research findings", brief=brief, sources_section=sources_section)
+                if path is not None:
+                    with open(path, "rb") as f:
+                        st.session_state.research_export_bytes = f.read()
+                    st.session_state.research_export_format = cache_key
+                    st.rerun()
+                else:
+                    st.error("Export failed — please try again.")
+            if st.session_state.research_export_bytes is not None:
+                mime = (
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    if export_format == "DOCX"
+                    else "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                )
+                st.download_button(
+                    label=f"Click to download {export_format}",
+                    data=st.session_state.research_export_bytes,
+                    file_name=f"groundwork_{st.session_state.research_material[0]['topic'].lower().replace(' ', '_')[:40]}.{export_format.lower()}",
+                    mime=mime,
+                    key=f"research_download_file_{export_format}",
+                )
 
         st.divider()
 
@@ -520,6 +584,52 @@ elif st.session_state.mode == "Document":
                     {"Dimension": dim.capitalize(), "Score": f"{data['score']}/5", "Reasoning": data["reasoning"]}
                     for dim, data in st.session_state.document_judge_regen["scores"].items()
                 ])
+
+            version_options = (
+                ["Original Report", "Regenerated Report"]
+                if st.session_state.document_report_regen is not None
+                else ["Original Report"]
+            )
+            st.divider()
+            st.markdown("#### Export Report")
+            export_version = st.radio("Version", options=version_options, horizontal=True, key="document_export_version")
+            export_format = st.selectbox("Format", options=["DOCX", "PPTX"], key="document_export_format_select")
+            cache_key = f"{export_format}-{export_version}"
+            if st.session_state.document_export_format != cache_key:
+                st.session_state.document_export_bytes = None
+                st.session_state.document_export_format = None
+            if st.button("Download Report", key="document_download_btn"):
+                if "Regenerated" in export_version:
+                    brief = st.session_state.document_report_regen["brief"]
+                    sources_section = st.session_state.document_report_regen.get("sources_section", "")
+                else:
+                    brief = st.session_state.document_report["brief"]
+                    sources_section = st.session_state.document_report.get("sources_section", "")
+                with st.spinner("Preparing export…"):
+                    if export_format == "DOCX":
+                        path = export_to_docx(topic="Document findings", brief=brief, sources_section=sources_section)
+                    else:
+                        path = export_to_pptx(topic="Document findings", brief=brief, sources_section=sources_section)
+                if path is not None:
+                    with open(path, "rb") as f:
+                        st.session_state.document_export_bytes = f.read()
+                    st.session_state.document_export_format = cache_key
+                    st.rerun()
+                else:
+                    st.error("Export failed — please try again.")
+            if st.session_state.document_export_bytes is not None:
+                mime = (
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    if export_format == "DOCX"
+                    else "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                )
+                st.download_button(
+                    label=f"Click to download {export_format}",
+                    data=st.session_state.document_export_bytes,
+                    file_name=f"groundwork_{st.session_state.document_material[0]['question'].lower().replace(' ', '_')[:40]}.{export_format.lower()}",
+                    mime=mime,
+                    key=f"document_download_file_{export_format}",
+                )
 
         st.divider()
 
