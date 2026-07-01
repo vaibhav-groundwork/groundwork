@@ -1,7 +1,7 @@
 # Groundwork: Architecture and Design Decisions
 
 This document explains the key architectural decisions behind Groundwork, including why each choice was made and what tradeoffs were considered. It is intended for anyone who wants to understand the system at a deeper level than the README provides.
-
+![Groundwork system architecture](architecture_diagram.svg)
 ---
 
 ## The core design principle
