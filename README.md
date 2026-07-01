@@ -116,6 +116,8 @@ app.py (Streamlit)
 
 ## Local setup
 
+Note: activate the virtual environment each time you open a new terminal session before running the app.
+
 ### Prerequisites
 
 - Python 3.11 or higher
