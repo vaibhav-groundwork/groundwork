@@ -1,2 +1,2 @@
 #!/bin/bash
-npm install
+cd /mount/src/groundwork && npm install

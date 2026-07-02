@@ -1,5 +1,5 @@
 anthropic>=0.40.0
-chromadb>=1.5.0
+chromadb>=0.4.0,<0.6.0
 langchain-core>=0.1.0
 langgraph>=1.2.0
 langgraph-prebuilt>=1.1.0
