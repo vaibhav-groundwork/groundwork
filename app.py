@@ -70,6 +70,238 @@ st.set_page_config(
     layout="wide",
 )
 
+st.markdown("""
+<style>
+:root {
+    --primary-color: #6366F1 !important;
+}
+/* ── Page and background ─────────────────────────────── */
+.stApp {
+    background-color: #0F0F1A;
+}
+
+section[data-testid="stSidebar"] {
+    background-color: #16162A;
+    border-right: 1px solid rgba(255,255,255,0.06);
+}
+
+section[data-testid="stSidebar"] > div {
+    padding: 1.5rem 1rem;
+}
+
+/* ── Main content area ───────────────────────────────── */
+.block-container {
+    padding: 2rem 2.5rem;
+    max-width: 860px;
+}
+
+/* ── Typography ──────────────────────────────────────── */
+h1, h2, h3, h4 {
+    color: #E8E8F0 !important;
+    letter-spacing: -0.3px;
+}
+
+h3 {
+    font-size: 1.1rem !important;
+    font-weight: 600 !important;
+}
+
+p, li, .stMarkdown {
+    color: #B0B0C0;
+    line-height: 1.65;
+    font-size: 0.95rem;
+}
+
+/* ── Buttons ─────────────────────────────────────────── */
+button[kind="primaryFormSubmit"],
+button[kind="secondary"],
+.stButton button,
+.stButton > button,
+[data-testid="baseButton-secondary"],
+[data-testid="baseButton-primary"] {
+    background-color: #6366F1 !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    font-size: 0.875rem !important;
+    padding: 0.5rem 1.25rem !important;
+    transition: background-color 0.15s ease !important;
+}
+
+[data-testid="baseButton-secondary"]:hover,
+[data-testid="baseButton-primary"]:hover,
+.stButton button:hover {
+    background-color: #4F52D6 !important;
+}
+
+/* ── Download button ─────────────────────────────────── */
+.stDownloadButton > button,
+[data-testid="baseButton-secondary"].stDownloadButton {
+    background-color: transparent !important;
+    color: #6366F1 !important;
+    border: 1px solid #6366F1 !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    font-size: 0.875rem !important;
+    transition: background-color 0.15s ease !important;
+}
+
+.stDownloadButton > button:hover {
+    background-color: rgba(99,102,241,0.1) !important;
+}
+
+/* ── Text inputs ─────────────────────────────────────── */
+[data-testid="stTextInput"] input,
+[data-baseweb="input"] input,
+input[type="text"],
+input[aria-label] {
+    background-color: #1E1E32 !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    border-radius: 8px !important;
+    color: #E8E8F0 !important;
+    font-size: 0.9rem !important;
+}
+
+[data-testid="stTextInput"] input:focus,
+[data-baseweb="input"] input:focus {
+    border-color: #6366F1 !important;
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.15) !important;
+}
+
+/* ── Radio buttons (mode toggle) ─────────────────────── */
+.stRadio > div {
+    gap: 0.5rem;
+}
+
+.stRadio > div > label {
+    background-color: rgba(255,255,255,0.04) !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    border-radius: 8px !important;
+    padding: 0.5rem 0.9rem !important;
+    color: #888 !important;
+    font-size: 0.875rem !important;
+    font-weight: 500 !important;
+    transition: all 0.15s ease !important;
+    width: 100%;
+}
+
+.stRadio > div > label:hover {
+    border-color: rgba(99,102,241,0.4) !important;
+    color: #E8E8F0 !important;
+}
+
+.stRadio [aria-checked="true"] > div,
+div[data-baseweb="radio"] input:checked ~ div {
+    background-color: #6366F1 !important;
+    color: #ffffff !important;
+    border-color: #6366F1 !important;
+}
+
+/* ── Selectbox ───────────────────────────────────────── */
+.stSelectbox > div > div {
+    background-color: #1E1E32 !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    border-radius: 8px !important;
+    color: #E8E8F0 !important;
+}
+
+/* ── Expander (sources) ──────────────────────────────── */
+.streamlit-expanderHeader {
+    background-color: rgba(99,102,241,0.08) !important;
+    border: 1px solid rgba(99,102,241,0.2) !important;
+    border-radius: 8px !important;
+    color: #6366F1 !important;
+    font-size: 0.875rem !important;
+    font-weight: 500 !important;
+}
+
+.streamlit-expanderContent {
+    background-color: #16162A !important;
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    border-top: none !important;
+    border-radius: 0 0 8px 8px !important;
+}
+
+/* ── Dividers ────────────────────────────────────────── */
+hr {
+    border-color: rgba(255,255,255,0.06) !important;
+    margin: 1.25rem 0 !important;
+}
+
+/* ── Captions ────────────────────────────────────────── */
+.stCaption, small {
+    color: #666680 !important;
+    font-size: 0.8rem !important;
+}
+
+/* ── Success / warning / error messages ──────────────── */
+.stSuccess {
+    background-color: rgba(45,212,191,0.1) !important;
+    border: 1px solid rgba(45,212,191,0.3) !important;
+    border-radius: 8px !important;
+    color: #2DD4BF !important;
+}
+
+.stWarning {
+    background-color: rgba(251,191,36,0.08) !important;
+    border: 1px solid rgba(251,191,36,0.25) !important;
+    border-radius: 8px !important;
+}
+
+.stError {
+    background-color: rgba(239,68,68,0.08) !important;
+    border: 1px solid rgba(239,68,68,0.25) !important;
+    border-radius: 8px !important;
+}
+
+/* ── Spinner ─────────────────────────────────────────── */
+.stSpinner > div {
+    border-top-color: #6366F1 !important;
+}
+
+/* ── Table (judge scores) ────────────────────────────── */
+.stTable table {
+    background-color: #16162A !important;
+    border-radius: 8px !important;
+    overflow: hidden !important;
+    font-size: 0.875rem !important;
+}
+
+.stTable th {
+    background-color: rgba(99,102,241,0.12) !important;
+    color: #6366F1 !important;
+    font-weight: 600 !important;
+    font-size: 0.8rem !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+    padding: 0.6rem 1rem !important;
+}
+
+.stTable td {
+    color: #B0B0C0 !important;
+    padding: 0.6rem 1rem !important;
+    border-color: rgba(255,255,255,0.04) !important;
+}
+
+.stTable tr:hover td {
+    background-color: rgba(99,102,241,0.05) !important;
+}
+
+/* ── File uploader ───────────────────────────────────── */
+.stFileUploader {
+    background-color: #1E1E32 !important;
+    border: 1px dashed rgba(99,102,241,0.3) !important;
+    border-radius: 10px !important;
+}
+
+/* ── Hide Streamlit default chrome ───────────────────── */
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
+header { visibility: hidden; }
+</style>
+""", unsafe_allow_html=True)
+
 from src.agents.rag_agent import rag_node  # noqa: E402
 from src.agents.synthesis_agent import synthesis_node  # noqa: E402
 from src.agents.judge_agent import judge_node  # noqa: E402
@@ -105,11 +337,15 @@ def render_sources(sources: list[dict]) -> None:
 def render_history_entry(entry: dict) -> None:
     """Renders one accumulated Q&A entry in chat-style format."""
     if entry["mode"] == "research":
-        st.caption("🔍 Research")
+        st.markdown("""
+<span style="background:rgba(99,102,241,0.15); color:#6366F1; font-size:0.75rem; font-weight:600; padding:3px 10px; border-radius:20px; border:1px solid rgba(99,102,241,0.3); display:inline-block; margin-bottom:8px;">🔍 Research</span>
+""", unsafe_allow_html=True)
         st.markdown(f"### {entry['topic']}")
         st.markdown(entry["notes"])
     else:
-        st.caption("📄 Document")
+        st.markdown("""
+<span style="background:rgba(255,75,75,0.15); color:#FF4B4B; font-size:0.75rem; font-weight:600; padding:3px 10px; border-radius:20px; border:1px solid rgba(255,75,75,0.3); display:inline-block; margin-bottom:8px;">📄 Document</span>
+""", unsafe_allow_html=True)
         st.markdown(f"### {entry['question']}")
         st.markdown(entry["answer"])
     if entry.get("sources"):
@@ -224,14 +460,28 @@ if "document_export_format" not in st.session_state:
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown("### Groundwork")
+    st.markdown("""
+<div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+    <div style="display:flex; flex-direction:column; align-items:center; gap:3px; flex-shrink:0;">
+        <div style="width:12px; height:3px; background:#6366F1; border-radius:2px; opacity:0.4;"></div>
+        <div style="width:18px; height:3px; background:#6366F1; border-radius:2px; opacity:0.7;"></div>
+        <div style="width:24px; height:3px; background:#6366F1; border-radius:2px;"></div>
+    </div>
+    <span style="font-size:1.5rem; font-weight:700; color:#E8E8F0; letter-spacing:-0.3px;">Groundwork</span>
+</div>
+<div style="font-size:0.85rem; color:#6366F1; font-weight:500; margin-bottom:0.5rem; padding-left:30px;">AI Research Assistant</div>
+""", unsafe_allow_html=True)
     st.caption(
         "Ask as many questions as you need, then generate a report that's "
         "audited for accuracy before you export it."
     )
     st.radio("Mode", options=["Research", "Document"], key="mode")
-    st.divider()
-    st.caption("🔒 Private session")
+    st.markdown("""
+<div style="padding-top:1rem; border-top:1px solid rgba(255,255,255,0.06); display:flex; align-items:center; gap:6px;">
+    <span style="width:6px; height:6px; background:#FF4B4B; border-radius:50%; display:inline-block; flex-shrink:0;"></span>
+    <span style="font-size:0.75rem; color:#555570;">Private session</span>
+</div>
+""", unsafe_allow_html=True)
 
 
 # ── Main panel ────────────────────────────────────────────────────────────────
@@ -412,7 +662,6 @@ if st.session_state.mode == "Research":
                 form_placeholder.empty()
                 with st.spinner("Researching — this may take a minute…"):
                     result = run_research(topic, prior_context=get_research_context())
-
                 st.session_state.research_result = result
                 st.session_state.current_topic = topic
                 st.rerun()
