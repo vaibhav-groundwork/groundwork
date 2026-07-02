@@ -1,11 +1,34 @@
+import subprocess
 import os
+import logging
 from src.config import (
     LANGCHAIN_TRACING,
     LANGCHAIN_PROJECT,
     ANTHROPIC_API_KEY,
     OPENAI_API_KEY,
 )
+logger = logging.getLogger(__name__)
 
+def _ensure_npm_packages() -> None:
+    """
+    Installs npm packages on first run if node_modules does not exist.
+    Required for Streamlit Cloud which does not execute setup.sh automatically.
+    """
+    app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    node_modules = os.path.join(app_dir, "node_modules")
+    if not os.path.exists(node_modules):
+        logger.info("node_modules not found — running npm install...")
+        result = subprocess.run(
+            ["npm", "install"],
+            cwd=app_dir,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if result.returncode == 0:
+            logger.info("npm install completed successfully.")
+        else:
+            logger.warning("npm install failed: %s", result.stderr)
 
 def setup_tracing() -> None:
     """
@@ -24,6 +47,7 @@ def setup_tracing() -> None:
         print(f"LangSmith tracing enabled via LiteLLM → project: {LANGCHAIN_PROJECT}")
     else:
         print("LangSmith tracing disabled (set LANGCHAIN_TRACING_V2=true to enable)")
+    _ensure_npm_packages()    
 
 
 def call_llm(
