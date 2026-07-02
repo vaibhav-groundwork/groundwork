@@ -5,7 +5,7 @@ I built this app as a learning as well as a solution to problems I had during my
 
 Groundwork is the result. It is a multi-agent research and document intelligence tool that lets you gather information from the web or your own files, build up a conversation across multiple questions, and generate an audited, exportable report. Every architectural decision in this project maps to a real AI infrastructure concept I learned and implemented from scratch.
 
-**Live app:** _[Add Streamlit Community Cloud URL after deployment]_
+**Live app:** [groundwork.streamlit.app](https://groundwork.streamlit.app)
 
 ---
 
